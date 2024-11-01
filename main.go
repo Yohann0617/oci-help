@@ -1,24 +1,24 @@
 /*
-  甲骨文云API文档
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/
+甲骨文云API文档
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/
 
-  实例:
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Instance/
-  VCN:
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Vcn/
-  Subnet:
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Subnet/
-  VNIC:
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Vnic/
-  VnicAttachment:
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/VnicAttachment/
-  私有IP
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/PrivateIp/
-  公共IP
-  https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/PublicIp/
+实例:
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Instance/
+VCN:
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Vcn/
+Subnet:
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Subnet/
+VNIC:
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/Vnic/
+VnicAttachment:
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/VnicAttachment/
+私有IP
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/PrivateIp/
+公共IP
+https://docs.oracle.com/en-us/iaas/api/#/en/iaas/20160918/PublicIp/
 
-  获取可用性域
-  https://docs.oracle.com/en-us/iaas/api/#/en/identity/20160918/AvailabilityDomain/ListAvailabilityDomains
+获取可用性域
+https://docs.oracle.com/en-us/iaas/api/#/en/identity/20160918/AvailabilityDomain/ListAvailabilityDomains
 */
 package main
 
@@ -33,6 +33,7 @@ import (
 	"io/ioutil"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -555,13 +556,47 @@ func instanceDetails(instanceId *string) {
 			var input string
 			fmt.Scanln(&input)
 			if strings.EqualFold(input, "y") {
-				publicIp, err := changePublicIp(vnics)
-				if err != nil {
-					fmt.Printf("\033[1;31m更换实例公共IP失败.\033[0m %s\n", err.Error())
-				} else {
-					fmt.Printf("\033[1;32m更换实例公共IP成功, 实例公共IP: \033[0m%s\n", *publicIp.IpAddress)
+				fmt.Printf("请输入多个 CIDR 网段，用逗号分隔 (例如: 192.168.0.0/24,10.0.0.0/16): ")
+				var cidrInput string
+				fmt.Scanln(&cidrInput)
+
+				// 分割输入的 CIDR 网段并解析为 net.IPNet 类型的切片
+				cidrStrings := strings.Split(cidrInput, ",")
+				var ipNets []*net.IPNet
+				for _, cidr := range cidrStrings {
+					_, ipNet, err := net.ParseCIDR(strings.TrimSpace(cidr))
+					if err != nil {
+						fmt.Printf("\033[1;31m无效的 CIDR 网段: %s\033[0m\n", cidr)
+						return
+					}
+					ipNets = append(ipNets, ipNet)
 				}
-				time.Sleep(1 * time.Second)
+
+				for {
+					publicIp, err := changePublicIp(vnics)
+					if err != nil {
+						fmt.Printf("\033[1;31m更换实例公共IP失败.\033[0m %s\n", err.Error())
+						return
+					}
+
+					ip := net.ParseIP(*publicIp.IpAddress)
+					inRange := false
+					for _, ipNet := range ipNets {
+						if ipNet.Contains(ip) {
+							inRange = true
+							break
+						}
+					}
+
+					if inRange {
+						fmt.Printf("\033[1;32m更换实例公共IP成功, 实例公共IP: \033[0m%s\n", *publicIp.IpAddress)
+						break
+					} else {
+						fmt.Printf("\033[1;33m实例公共IP %s 不在提供的 CIDR 网段中，重新更换...\033[0m\n", *publicIp.IpAddress)
+					}
+
+					time.Sleep(5 * time.Second)
+				}
 			}
 
 		case 6:

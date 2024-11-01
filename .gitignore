@@ -16,6 +16,7 @@
 
 .DS_Store
 
+*.ini
 *.pem
 build/
 example/
